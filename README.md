@@ -191,6 +191,7 @@ Key parameters:
 - `--generation_top_k`: Top-k sampling for generation
 - `--hybrid_retrieval`: Fuse latent retrieval scores with BM25 scores
 - `--hybrid_adaptive_fusion`: Adapt the latent/BM25 fusion weight per query
+- `--hybrid_candidate_top_m`: Restrict BM25 fusion to latent top-M candidates to reduce lexical distractors
 - `--do_eval_gen`: Enable generation evaluation
 
 #### 4. Distributed Training

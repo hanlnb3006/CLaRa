@@ -66,9 +66,10 @@ training_commands="openrlhf.cli.train_sft \
    --generation_top_k 5 \
    --hybrid_retrieval \
    --hybrid_adaptive_fusion \
-   --hybrid_alpha 0.75 \
-   --hybrid_alpha_min 0.45 \
-   --hybrid_alpha_max 0.90 \
+   --hybrid_alpha 0.90 \
+   --hybrid_alpha_min 0.75 \
+   --hybrid_alpha_max 0.95 \
+   --hybrid_candidate_top_m 5 \
    --qa_loss \
    --do_eval_gen \
    --doc_max_length 256 \

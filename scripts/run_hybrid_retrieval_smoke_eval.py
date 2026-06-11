@@ -33,7 +33,7 @@ CASES = [
             "The federal execution chamber is located in Terre Haute, Indiana.",
         ],
         "relevant": [1],
-        "latent_scores": [0.85, 0.15, 0.10],
+        "latent_scores": [0.55, 0.45, 0.10],
     },
     {
         "id": "legal_rare_term_exact_match",
@@ -44,7 +44,7 @@ CASES = [
             "Corporate compliance programs usually include audit trails and employee training.",
         ],
         "relevant": [1],
-        "latent_scores": [0.78, 0.18, 0.08],
+        "latent_scores": [0.55, 0.45, 0.08],
     },
     {
         "id": "medical_abbreviation_exact_match",
@@ -55,7 +55,7 @@ CASES = [
             "Creatinine can be measured in blood tests during routine clinical assessment.",
         ],
         "relevant": [1],
-        "latent_scores": [0.70, 0.30, 0.20],
+        "latent_scores": [0.50, 0.45, 0.20],
     },
     {
         "id": "semantic_match_should_not_break",
@@ -134,18 +134,20 @@ def main():
             questions,
             documents,
             enabled=True,
-            fixed_alpha=0.75,
+            fixed_alpha=0.90,
             adaptive=False,
+            candidate_top_m=2,
         )
         adaptive_scores, adaptive_bm25, adaptive_alpha = hybrid.fuse_retrieval_scores(
             latent_scores,
             questions,
             documents,
             enabled=True,
-            fixed_alpha=0.75,
+            fixed_alpha=0.90,
             adaptive=True,
-            alpha_min=0.45,
-            alpha_max=0.90,
+            alpha_min=0.75,
+            alpha_max=0.95,
+            candidate_top_m=2,
         )
 
         row = {
@@ -153,8 +155,8 @@ def main():
             "question": case["question"],
             "relevant": case["relevant"],
             "latent_only": evaluate_method(case, latent_scores[0]),
-            "hybrid_fixed_alpha_0.75": evaluate_method(case, fixed_scores[0]),
-            "hybrid_adaptive_alpha_0.45_0.90": evaluate_method(case, adaptive_scores[0]),
+            "hybrid_fixed_alpha_0.90_m2": evaluate_method(case, fixed_scores[0]),
+            "hybrid_adaptive_alpha_0.75_0.95_m2": evaluate_method(case, adaptive_scores[0]),
             "bm25_normalized": [round(float(score), 6) for score in fixed_bm25[0].tolist()],
             "fixed_alpha": round(float(fixed_alpha[0].item()), 6),
             "adaptive_alpha": round(float(adaptive_alpha[0].item()), 6),
@@ -165,8 +167,8 @@ def main():
         "num_cases": len(CASES),
         "methods": {
             "latent_only": summarize(rows, "latent_only"),
-            "hybrid_fixed_alpha_0.75": summarize(rows, "hybrid_fixed_alpha_0.75"),
-            "hybrid_adaptive_alpha_0.45_0.90": summarize(rows, "hybrid_adaptive_alpha_0.45_0.90"),
+            "hybrid_fixed_alpha_0.90_m2": summarize(rows, "hybrid_fixed_alpha_0.90_m2"),
+            "hybrid_adaptive_alpha_0.75_0.95_m2": summarize(rows, "hybrid_adaptive_alpha_0.75_0.95_m2"),
         },
     }
 
@@ -220,17 +222,17 @@ def main():
                     f"{row['latent_only']['recall@1']:.1f} | {row['latent_only']['mrr']:.3f} | n/a |"
                 ),
                 (
-                    "| hybrid_fixed_alpha_0.75 | "
-                    f"{row['hybrid_fixed_alpha_0.75']['top1']} | {row['hybrid_fixed_alpha_0.75']['ranking']} | "
-                    f"{row['hybrid_fixed_alpha_0.75']['recall@1']:.1f} | "
-                    f"{row['hybrid_fixed_alpha_0.75']['mrr']:.3f} | {row['fixed_alpha']:.3f} |"
+                    "| hybrid_fixed_alpha_0.90_m2 | "
+                    f"{row['hybrid_fixed_alpha_0.90_m2']['top1']} | {row['hybrid_fixed_alpha_0.90_m2']['ranking']} | "
+                    f"{row['hybrid_fixed_alpha_0.90_m2']['recall@1']:.1f} | "
+                    f"{row['hybrid_fixed_alpha_0.90_m2']['mrr']:.3f} | {row['fixed_alpha']:.3f} |"
                 ),
                 (
-                    "| hybrid_adaptive_alpha_0.45_0.90 | "
-                    f"{row['hybrid_adaptive_alpha_0.45_0.90']['top1']} | "
-                    f"{row['hybrid_adaptive_alpha_0.45_0.90']['ranking']} | "
-                    f"{row['hybrid_adaptive_alpha_0.45_0.90']['recall@1']:.1f} | "
-                    f"{row['hybrid_adaptive_alpha_0.45_0.90']['mrr']:.3f} | {row['adaptive_alpha']:.3f} |"
+                    "| hybrid_adaptive_alpha_0.75_0.95_m2 | "
+                    f"{row['hybrid_adaptive_alpha_0.75_0.95_m2']['top1']} | "
+                    f"{row['hybrid_adaptive_alpha_0.75_0.95_m2']['ranking']} | "
+                    f"{row['hybrid_adaptive_alpha_0.75_0.95_m2']['recall@1']:.1f} | "
+                    f"{row['hybrid_adaptive_alpha_0.75_0.95_m2']['mrr']:.3f} | {row['adaptive_alpha']:.3f} |"
                 ),
                 "",
                 f"Normalized BM25 scores: {row['bm25_normalized']}",

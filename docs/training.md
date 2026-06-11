@@ -87,6 +87,7 @@ Jointly train reranker and generator with retrieval.
 - `--generation_top_k`: Top-k sampling for generation
 - `--hybrid_retrieval`: Combine CLaRa latent retrieval with BM25 lexical retrieval
 - `--hybrid_adaptive_fusion`: Adjust the latent/BM25 fusion weight per query
+- `--hybrid_candidate_top_m`: Restrict BM25 fusion to latent top-M candidates to reduce lexical distractors
 - `--do_eval_gen`: Enable generation evaluation
 
 ### Example Command

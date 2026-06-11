@@ -65,12 +65,31 @@ class HybridRetrievalTest(unittest.TestCase):
             ["When was Timothy McVeigh executed on 2001-06-11?"],
             bm25_scores,
             adaptive=True,
-            alpha_min=0.45,
-            alpha_max=0.90,
+            alpha_min=0.75,
+            alpha_max=0.95,
         )
 
-        self.assertGreaterEqual(alpha.item(), 0.45 - 1e-6)
-        self.assertLess(alpha.item(), 0.90)
+        self.assertGreaterEqual(alpha.item(), 0.75 - 1e-6)
+        self.assertLess(alpha.item(), 0.95)
+
+    def test_candidate_top_m_prevents_bm25_from_promoting_far_candidates(self):
+        latent_scores = torch.tensor([[0.9, 0.8, -0.9]], dtype=torch.float32)
+
+        fused, bm25_scores, _ = fuse_retrieval_scores(
+            latent_scores,
+            questions=["When was Timothy McVeigh executed?"],
+            documents=[[
+                "Timothy McVeigh was discussed in a biographical article.",
+                "A federal prison article mentions execution procedures.",
+                "Timothy McVeigh was executed by lethal injection on June 11, 2001.",
+            ]],
+            enabled=True,
+            fixed_alpha=0.25,
+            candidate_top_m=2,
+        )
+
+        self.assertIsNotNone(bm25_scores)
+        self.assertLess(fused[0, 2].item(), fused[0, 1].item())
 
 
 if __name__ == "__main__":

@@ -22,5 +22,6 @@ export DECODER_MODEL_NAME=${DECODER_MODEL_NAME:-mistralai/Mistral-7B-Instruct-v0
 export COMPR_BASE_MODEL_NAME=${COMPR_BASE_MODEL_NAME:-mistralai/Mistral-7B-Instruct-v0.2}
 export QUANTIZATION=${QUANTIZATION:-int4}
 export DEVICE_MAP=${DEVICE_MAP:-auto}
+export HYBRID_CANDIDATE_TOP_M=${HYBRID_CANDIDATE_TOP_M:-5}
 
 bash "$SCRIPT_DIR/evaluation_hybrid_ablation.sh"

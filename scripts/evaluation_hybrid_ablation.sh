@@ -27,6 +27,7 @@ COMPR_MODEL_NAME=${COMPR_MODEL_NAME:-}
 QUANTIZATION=${QUANTIZATION:-}
 DEVICE_MAP=${DEVICE_MAP:-}
 ATTN_IMPLEMENTATION=${ATTN_IMPLEMENTATION:-}
+HYBRID_CANDIDATE_TOP_M=${HYBRID_CANDIDATE_TOP_M:-5}
 
 OPTIONAL_ARGS=""
 if [ -n "$MAX_EVAL_SAMPLES" ]; then
@@ -49,6 +50,9 @@ if [ -n "$DEVICE_MAP" ]; then
 fi
 if [ -n "$ATTN_IMPLEMENTATION" ]; then
     OPTIONAL_ARGS="$OPTIONAL_ARGS --attn_implementation $ATTN_IMPLEMENTATION"
+fi
+if [ -n "$HYBRID_CANDIDATE_TOP_M" ]; then
+    OPTIONAL_ARGS="$OPTIONAL_ARGS --hybrid_candidate_top_m $HYBRID_CANDIDATE_TOP_M"
 fi
 
 export PYTHONPATH="$PROJECT_ROOT:$SAVE_PATH:$PYTHONPATH"
@@ -78,7 +82,7 @@ accelerate launch \
     --mixed_precision=bf16 \
     $COMMON_ARGS \
     --hybrid_retrieval \
-    --hybrid_alpha 0.75
+    --hybrid_alpha 0.90
 
 echo "Running adaptive hybrid retrieval..."
 accelerate launch \
@@ -88,7 +92,7 @@ accelerate launch \
     $COMMON_ARGS \
     --hybrid_retrieval \
     --hybrid_adaptive_fusion \
-    --hybrid_alpha_min 0.45 \
-    --hybrid_alpha_max 0.90
+    --hybrid_alpha_min 0.75 \
+    --hybrid_alpha_max 0.95
 
 echo "Hybrid retrieval ablation completed."

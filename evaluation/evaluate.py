@@ -7,6 +7,8 @@ import os
 import json
 import argparse
 import gc
+import importlib
+import sys
 from datetime import timedelta
 from collections import defaultdict, Counter
 from typing import List, Dict, Any, Optional, Tuple
@@ -21,7 +23,6 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import spacy
-import evaluate
 import re
 import string
 
@@ -35,12 +36,31 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 TARGET_ENTITY_CATEGORIES = {"PERSON", "GPE", "DATE", "CARDINAL", "ORG"}
 
 
+def import_hf_evaluate():
+    """Import Hugging Face evaluate without resolving this script as evaluate.py."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    original_path = list(sys.path)
+    sys.modules.pop("evaluate", None)
+
+    try:
+        sys.path = [
+            path for path in sys.path
+            if os.path.abspath(path or os.getcwd()) != script_dir
+        ]
+        return importlib.import_module("evaluate")
+    finally:
+        sys.path = original_path
+
+
+hf_evaluate = import_hf_evaluate()
+
+
 class EvaluationMetrics:
     """Handles all evaluation metrics and scoring functions."""
     
     def __init__(self):
-        self.bertscore = evaluate.load("bertscore")
-        self.rouge = evaluate.load("rouge")
+        self.bertscore = hf_evaluate.load("bertscore")
+        self.rouge = hf_evaluate.load("rouge")
         self.nlp = spacy.load("en_core_web_sm")
     
     @staticmethod
@@ -552,6 +572,7 @@ class AcceleratedCLaRaInference:
                 "hybrid_alpha_max",
                 "bm25_k1",
                 "bm25_b",
+                "hybrid_candidate_top_m",
                 "decoder_model_name",
                 "compr_base_model_name",
                 "compr_model_name",
@@ -739,9 +760,13 @@ def get_retrieval_run_suffix(args) -> str:
     if args.hybrid_adaptive_fusion:
         alpha_min = _format_float_token(args.hybrid_alpha_min)
         alpha_max = _format_float_token(args.hybrid_alpha_max)
-        return f"_hybrid_adaptive_a{alpha_min}-{alpha_max}"
+        suffix = f"_hybrid_adaptive_a{alpha_min}-{alpha_max}"
+    else:
+        suffix = f"_hybrid_fixed_a{_format_float_token(args.hybrid_alpha)}"
 
-    return f"_hybrid_fixed_a{_format_float_token(args.hybrid_alpha)}"
+    if args.hybrid_candidate_top_m is not None and args.hybrid_candidate_top_m > 0:
+        suffix += f"_m{args.hybrid_candidate_top_m}"
+    return suffix
 
 def get_eval_run_suffix(args) -> str:
     """Build a suffix for retrieval mode and optional mini-evaluation runs."""
@@ -810,6 +835,8 @@ def main():
                        help='Maximum latent-score weight for adaptive fusion')
     parser.add_argument('--bm25_k1', type=float, default=None, help='BM25 k1 parameter')
     parser.add_argument('--bm25_b', type=float, default=None, help='BM25 b parameter')
+    parser.add_argument('--hybrid_candidate_top_m', type=int, default=None,
+                       help='Apply BM25 fusion only inside latent top-M candidates; <=0 disables shortlist gating')
     parser.add_argument('--decoder_model_name', type=str, default=None,
                        help='Override base decoder model path or Hugging Face id')
     parser.add_argument('--compr_base_model_name', type=str, default=None,

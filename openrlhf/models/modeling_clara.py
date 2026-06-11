@@ -169,12 +169,13 @@ class CLaRaConfig(PretrainedConfig):
                  max_new_tokens: int = 128,
                  stage2_retrieval_top_n: int = 1,
                  hybrid_retrieval: bool = False,
-                 hybrid_alpha: float = 0.75,
+                 hybrid_alpha: float = 0.90,
                  hybrid_adaptive_fusion: bool = False,
-                 hybrid_alpha_min: float = 0.45,
-                 hybrid_alpha_max: float = 0.90,
+                 hybrid_alpha_min: float = 0.75,
+                 hybrid_alpha_max: float = 0.95,
                  bm25_k1: float = 1.2,
                  bm25_b: float = 0.75,
+                 hybrid_candidate_top_m: int = 5,
                  load_pretrained_checkpoint: bool = False,
                  device_map=None,
                  auto_map: dict = {
@@ -227,6 +228,7 @@ class CLaRaConfig(PretrainedConfig):
         self.hybrid_alpha_max = hybrid_alpha_max
         self.bm25_k1 = bm25_k1
         self.bm25_b = bm25_b
+        self.hybrid_candidate_top_m = hybrid_candidate_top_m
         
         if training_form == 'compressor':
             assert compr_model_name is not None and not self.lora
@@ -357,12 +359,13 @@ class CLaRa(PreTrainedModel):
         self.training_stage = cfg.training_stage
         self.stage2_retrieval_top_n = cfg.stage2_retrieval_top_n
         self.hybrid_retrieval = bool(getattr(cfg, "hybrid_retrieval", False))
-        self.hybrid_alpha = float(getattr(cfg, "hybrid_alpha", 0.75))
+        self.hybrid_alpha = float(getattr(cfg, "hybrid_alpha", 0.90))
         self.hybrid_adaptive_fusion = bool(getattr(cfg, "hybrid_adaptive_fusion", False))
-        self.hybrid_alpha_min = float(getattr(cfg, "hybrid_alpha_min", 0.45))
-        self.hybrid_alpha_max = float(getattr(cfg, "hybrid_alpha_max", 0.90))
+        self.hybrid_alpha_min = float(getattr(cfg, "hybrid_alpha_min", 0.75))
+        self.hybrid_alpha_max = float(getattr(cfg, "hybrid_alpha_max", 0.95))
         self.bm25_k1 = float(getattr(cfg, "bm25_k1", 1.2))
         self.bm25_b = float(getattr(cfg, "bm25_b", 0.75))
+        self.hybrid_candidate_top_m = int(getattr(cfg, "hybrid_candidate_top_m", 5))
         self.sep = cfg.sep
         self.compr_rate = cfg.compr_rate
         self.local_rank = os.getenv('LOCAL_RANK', '0')
@@ -1028,6 +1031,7 @@ class CLaRa(PreTrainedModel):
             alpha_max=self.hybrid_alpha_max,
             bm25_k1=self.bm25_k1,
             bm25_b=self.bm25_b,
+            candidate_top_m=self.hybrid_candidate_top_m,
         )
     
     def _retrieve_embeddings(self, questions: torch.Tensor, stage2_retrieval_top_n: int = 1) -> torch.Tensor:

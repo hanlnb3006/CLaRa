@@ -56,6 +56,7 @@ def create_clara_config(args: argparse.Namespace) -> CLaRaConfig:
         hybrid_alpha_max=args.hybrid_alpha_max,
         bm25_k1=args.bm25_k1,
         bm25_b=args.bm25_b,
+        hybrid_candidate_top_m=args.hybrid_candidate_top_m,
         pure_inference=args.pure_inference
     )
 
@@ -79,6 +80,7 @@ def setup_model(args: argparse.Namespace) -> CLaRa:
             hybrid_alpha_max=args.hybrid_alpha_max,
             bm25_k1=args.bm25_k1,
             bm25_b=args.bm25_b,
+            hybrid_candidate_top_m=args.hybrid_candidate_top_m,
         )
     else:
         print("Initializing new model")
@@ -281,16 +283,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
                              help="Evaluate generation during eval")
     clara_group.add_argument("--hybrid_retrieval", action="store_true", default=False,
                              help="Fuse CLaRa latent retrieval scores with BM25 scores in stage2")
-    clara_group.add_argument("--hybrid_alpha", type=float, default=0.75,
+    clara_group.add_argument("--hybrid_alpha", type=float, default=0.90,
                              help="Fixed latent-score weight for hybrid retrieval")
     clara_group.add_argument("--hybrid_adaptive_fusion", action="store_true", default=False,
                              help="Adapt latent/BM25 fusion weight per query")
-    clara_group.add_argument("--hybrid_alpha_min", type=float, default=0.45,
+    clara_group.add_argument("--hybrid_alpha_min", type=float, default=0.75,
                              help="Minimum latent-score weight for adaptive fusion")
-    clara_group.add_argument("--hybrid_alpha_max", type=float, default=0.90,
+    clara_group.add_argument("--hybrid_alpha_max", type=float, default=0.95,
                              help="Maximum latent-score weight for adaptive fusion")
     clara_group.add_argument("--bm25_k1", type=float, default=1.2, help="BM25 k1 parameter")
     clara_group.add_argument("--bm25_b", type=float, default=0.75, help="BM25 b parameter")
+    clara_group.add_argument("--hybrid_candidate_top_m", type=int, default=5,
+                             help="Apply BM25 fusion only inside latent top-M candidates; <=0 disables shortlist gating")
 
     # Checkpoint and saving
     checkpoint_group = parser.add_argument_group("Checkpointing")

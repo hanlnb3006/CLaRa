@@ -8,8 +8,8 @@ It is not a replacement for full EM/F1 benchmark evaluation on HotpotQA, 2Wiki, 
 | Method | Recall@1 | Recall@2 | MRR |
 |---|---:|---:|---:|
 | latent_only | 0.400 | 1.000 | 0.700 |
-| hybrid_fixed_alpha_0.75 | 0.800 | 1.000 | 0.900 |
-| hybrid_adaptive_alpha_0.45_0.90 | 1.000 | 1.000 | 1.000 |
+| hybrid_fixed_alpha_0.90_m2 | 1.000 | 1.000 | 1.000 |
+| hybrid_adaptive_alpha_0.75_0.95_m2 | 1.000 | 1.000 | 1.000 |
 
 ## Per-case Results
 
@@ -22,8 +22,8 @@ Relevant document index: [1]
 | Method | Top-1 | Ranking | Recall@1 | MRR | Alpha |
 |---|---:|---|---:|---:|---:|
 | latent_only | 0 | [0, 1, 2] | 0.0 | 0.500 | n/a |
-| hybrid_fixed_alpha_0.75 | 0 | [0, 1, 2] | 0.0 | 0.500 | 0.750 |
-| hybrid_adaptive_alpha_0.45_0.90 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.450 |
+| hybrid_fixed_alpha_0.90_m2 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.900 |
+| hybrid_adaptive_alpha_0.75_0.95_m2 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.910 |
 
 Normalized BM25 scores: [0.0, 1.0, 0.0]
 
@@ -36,8 +36,8 @@ Relevant document index: [1]
 | Method | Top-1 | Ranking | Recall@1 | MRR | Alpha |
 |---|---:|---|---:|---:|---:|
 | latent_only | 0 | [0, 1, 2] | 0.0 | 0.500 | n/a |
-| hybrid_fixed_alpha_0.75 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.750 |
-| hybrid_adaptive_alpha_0.45_0.90 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.630 |
+| hybrid_fixed_alpha_0.90_m2 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.900 |
+| hybrid_adaptive_alpha_0.75_0.95_m2 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.879 |
 
 Normalized BM25 scores: [0.0, 1.0, 0.0]
 
@@ -50,8 +50,8 @@ Relevant document index: [1]
 | Method | Top-1 | Ranking | Recall@1 | MRR | Alpha |
 |---|---:|---|---:|---:|---:|
 | latent_only | 0 | [0, 1, 2] | 0.0 | 0.500 | n/a |
-| hybrid_fixed_alpha_0.75 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.750 |
-| hybrid_adaptive_alpha_0.45_0.90 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.637 |
+| hybrid_fixed_alpha_0.90_m2 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.900 |
+| hybrid_adaptive_alpha_0.75_0.95_m2 | 1 | [1, 0, 2] | 1.0 | 1.000 | 0.926 |
 
 Normalized BM25 scores: [0.333333, 1.0, 0.0]
 
@@ -64,8 +64,8 @@ Relevant document index: [1]
 | Method | Top-1 | Ranking | Recall@1 | MRR | Alpha |
 |---|---:|---|---:|---:|---:|
 | latent_only | 1 | [1, 2, 0] | 1.0 | 1.000 | n/a |
-| hybrid_fixed_alpha_0.75 | 1 | [1, 2, 0] | 1.0 | 1.000 | 0.750 |
-| hybrid_adaptive_alpha_0.45_0.90 | 1 | [1, 2, 0] | 1.0 | 1.000 | 0.585 |
+| hybrid_fixed_alpha_0.90_m2 | 1 | [1, 2, 0] | 1.0 | 1.000 | 0.900 |
+| hybrid_adaptive_alpha_0.75_0.95_m2 | 1 | [1, 2, 0] | 1.0 | 1.000 | 0.923 |
 
 Normalized BM25 scores: [0.0, 1.0, 0.0]
 
@@ -78,7 +78,7 @@ Relevant document index: [0]
 | Method | Top-1 | Ranking | Recall@1 | MRR | Alpha |
 |---|---:|---|---:|---:|---:|
 | latent_only | 0 | [0, 1, 2] | 1.0 | 1.000 | n/a |
-| hybrid_fixed_alpha_0.75 | 0 | [0, 1, 2] | 1.0 | 1.000 | 0.750 |
-| hybrid_adaptive_alpha_0.45_0.90 | 0 | [0, 1, 2] | 1.0 | 1.000 | 0.517 |
+| hybrid_fixed_alpha_0.90_m2 | 0 | [0, 2, 1] | 1.0 | 1.000 | 0.900 |
+| hybrid_adaptive_alpha_0.75_0.95_m2 | 0 | [0, 2, 1] | 1.0 | 1.000 | 0.950 |
 
 Normalized BM25 scores: [1.0, 0.0, 0.0]

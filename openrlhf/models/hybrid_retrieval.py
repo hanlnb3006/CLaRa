@@ -33,11 +33,14 @@ def specific_token_ratio(text: str) -> float:
         return 0.0
 
     def is_specific(token: str) -> bool:
+        has_digit = any(ch.isdigit() for ch in token)
+        has_symbol = any(ch in token for ch in "-/. _")
+        is_acronym = token.isupper() and 2 <= len(token) <= 8
         return (
-            any(ch.isdigit() for ch in token)
-            or any(ch in token for ch in "-/.")
-            or len(token) >= 8
-            or (token[:1].isupper() and token.lower() != token)
+            has_digit
+            or has_symbol
+            or is_acronym
+            or len(token) >= 12
         )
 
     return sum(1 for token in content_tokens if is_specific(token)) / len(content_tokens)
@@ -108,10 +111,10 @@ def compute_hybrid_alpha(
     questions: List[str],
     bm25_scores: torch.Tensor,
     *,
-    fixed_alpha: float = 0.75,
+    fixed_alpha: float = 0.90,
     adaptive: bool = False,
-    alpha_min: float = 0.45,
-    alpha_max: float = 0.90,
+    alpha_min: float = 0.75,
+    alpha_max: float = 0.95,
 ) -> torch.Tensor:
     """Return per-query latent-score weights for fixed or adaptive fusion."""
     device = bm25_scores.device
@@ -134,8 +137,8 @@ def compute_hybrid_alpha(
         else:
             bm25_confidence = 0.0
 
-        short_specific_query = 1.0 if len(lexical_tokens(question)) <= 6 and specificity > 0 else 0.0
-        signal = min(1.0, 0.45 * specificity + 0.35 * bm25_confidence + 0.20 * short_specific_query)
+        short_specific_query = 1.0 if len(lexical_tokens(question)) <= 6 and specificity >= 0.4 else 0.0
+        signal = min(1.0, 0.55 * specificity + 0.25 * bm25_confidence * specificity + 0.20 * short_specific_query)
         signals.append(signal)
 
     lexical_signal = torch.tensor(signals, device=device, dtype=dtype).unsqueeze(-1)
@@ -148,12 +151,13 @@ def fuse_retrieval_scores(
     documents: Optional[List[List[str]]],
     *,
     enabled: bool,
-    fixed_alpha: float = 0.75,
+    fixed_alpha: float = 0.90,
     adaptive: bool = False,
-    alpha_min: float = 0.45,
-    alpha_max: float = 0.90,
+    alpha_min: float = 0.75,
+    alpha_max: float = 0.95,
     bm25_k1: float = 1.2,
     bm25_b: float = 0.75,
+    candidate_top_m: int = 5,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
     """Fuse latent cosine scores with BM25 scores for hybrid retrieval."""
     if not enabled or not questions or documents is None:
@@ -181,5 +185,12 @@ def fuse_retrieval_scores(
         alpha_max=alpha_max,
     ).to(latent_scores.dtype)
     fused_scores = alpha * latent_norm + (1.0 - alpha) * bm25_norm
+
+    if candidate_top_m is not None and 0 < candidate_top_m < latent_scores.size(-1):
+        top_m = min(candidate_top_m, latent_scores.size(-1))
+        candidate_idx = latent_scores.topk(k=top_m, dim=-1).indices
+        candidate_mask = torch.zeros_like(latent_scores, dtype=torch.bool)
+        candidate_mask.scatter_(dim=-1, index=candidate_idx, value=True)
+        fused_scores = torch.where(candidate_mask, fused_scores, latent_norm)
 
     return fused_scores.to(latent_scores.dtype), bm25_norm, alpha.squeeze(-1)
