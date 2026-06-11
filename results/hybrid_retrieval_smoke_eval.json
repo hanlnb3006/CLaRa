@@ -1,0 +1,335 @@
+{
+  "note": "Controlled smoke evaluation for Hybrid Retrieval + adaptive fusion. It verifies retrieval score fusion behavior on deterministic cases, but it is not a substitute for full dataset EM/F1/Recall benchmarking.",
+  "summary": {
+    "num_cases": 5,
+    "methods": {
+      "latent_only": {
+        "recall@1": 0.4,
+        "recall@2": 1.0,
+        "mrr": 0.7
+      },
+      "hybrid_fixed_alpha_0.75": {
+        "recall@1": 0.8,
+        "recall@2": 1.0,
+        "mrr": 0.9
+      },
+      "hybrid_adaptive_alpha_0.45_0.90": {
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "entity_date_exact_match",
+      "question": "When was Timothy McVeigh executed on 2001-06-11?",
+      "relevant": [
+        1
+      ],
+      "latent_only": {
+        "scores": [
+          0.85,
+          0.15,
+          0.1
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 0.0,
+        "recall@2": 1.0,
+        "mrr": 0.5
+      },
+      "hybrid_fixed_alpha_0.75": {
+        "scores": [
+          0.69375,
+          0.68125,
+          0.4125
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 0.0,
+        "recall@2": 1.0,
+        "mrr": 0.5
+      },
+      "hybrid_adaptive_alpha_0.45_0.90": {
+        "scores": [
+          0.41625,
+          0.80875,
+          0.2475
+        ],
+        "ranking": [
+          1,
+          0,
+          2
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "bm25_normalized": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "fixed_alpha": 0.75,
+      "adaptive_alpha": 0.45
+    },
+    {
+      "id": "legal_rare_term_exact_match",
+      "question": "Which regulation defines HIPAA covered entity under 45 CFR 160.103?",
+      "relevant": [
+        1
+      ],
+      "latent_only": {
+        "scores": [
+          0.78,
+          0.18,
+          0.08
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 0.0,
+        "recall@2": 1.0,
+        "mrr": 0.5
+      },
+      "hybrid_fixed_alpha_0.75": {
+        "scores": [
+          0.6675,
+          0.6925,
+          0.405
+        ],
+        "ranking": [
+          1,
+          0,
+          2
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid_adaptive_alpha_0.45_0.90": {
+        "scores": [
+          0.5607,
+          0.7417,
+          0.3402
+        ],
+        "ranking": [
+          1,
+          0,
+          2
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "bm25_normalized": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "fixed_alpha": 0.75,
+      "adaptive_alpha": 0.63
+    },
+    {
+      "id": "medical_abbreviation_exact_match",
+      "question": "What does EGFR indicate in chronic kidney disease staging?",
+      "relevant": [
+        1
+      ],
+      "latent_only": {
+        "scores": [
+          0.7,
+          0.3,
+          0.2
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 0.0,
+        "recall@2": 1.0,
+        "mrr": 0.5
+      },
+      "hybrid_fixed_alpha_0.75": {
+        "scores": [
+          0.720833,
+          0.7375,
+          0.45
+        ],
+        "ranking": [
+          1,
+          0,
+          2
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid_adaptive_alpha_0.45_0.90": {
+        "scores": [
+          0.662708,
+          0.776875,
+          0.3825
+        ],
+        "ranking": [
+          1,
+          0,
+          2
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "bm25_normalized": [
+        0.333333,
+        1.0,
+        0.0
+      ],
+      "fixed_alpha": 0.75,
+      "adaptive_alpha": 0.6375
+    },
+    {
+      "id": "semantic_match_should_not_break",
+      "question": "What is a major risk of long-term high blood pressure?",
+      "relevant": [
+        1
+      ],
+      "latent_only": {
+        "scores": [
+          0.1,
+          0.82,
+          0.35
+        ],
+        "ranking": [
+          1,
+          2,
+          0
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid_fixed_alpha_0.75": {
+        "scores": [
+          0.4125,
+          0.9325,
+          0.50625
+        ],
+        "ranking": [
+          1,
+          2,
+          0
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid_adaptive_alpha_0.45_0.90": {
+        "scores": [
+          0.32175,
+          0.94735,
+          0.394875
+        ],
+        "ranking": [
+          1,
+          2,
+          0
+        ],
+        "top1": 1,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "bm25_normalized": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "fixed_alpha": 0.75,
+      "adaptive_alpha": 0.585
+    },
+    {
+      "id": "lexical_and_dense_agree",
+      "question": "What condition is treated by metformin?",
+      "relevant": [
+        0
+      ],
+      "latent_only": {
+        "scores": [
+          0.8,
+          0.2,
+          0.15
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid_fixed_alpha_0.75": {
+        "scores": [
+          0.925,
+          0.45,
+          0.43125
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid_adaptive_alpha_0.45_0.90": {
+        "scores": [
+          0.94825,
+          0.3105,
+          0.297562
+        ],
+        "ranking": [
+          0,
+          1,
+          2
+        ],
+        "top1": 0,
+        "recall@1": 1.0,
+        "recall@2": 1.0,
+        "mrr": 1.0
+      },
+      "bm25_normalized": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "fixed_alpha": 0.75,
+      "adaptive_alpha": 0.5175
+    }
+  ]
+}
