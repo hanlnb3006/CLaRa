@@ -41,17 +41,18 @@ class HybridRetrievalTest(unittest.TestCase):
         self.assertGreater(scores[0, 0].item(), scores[0, 1].item())
 
     def test_fixed_fusion_can_change_top_document(self):
-        latent_scores = torch.tensor([[0.8, 0.2]], dtype=torch.float32)
+        latent_scores = torch.tensor([[0.35, 0.30]], dtype=torch.float32)
 
         fused, bm25_scores, alpha = fuse_retrieval_scores(
             latent_scores,
-            questions=["When was Timothy McVeigh executed?"],
+            questions=["When was Timothy McVeigh executed on 2001-06-11?"],
             documents=[[
                 "Storms can produce heavy rain, wind, thunder, and lightning.",
                 "Timothy McVeigh was executed by lethal injection on June 11, 2001.",
             ]],
             enabled=True,
             fixed_alpha=0.25,
+            candidate_top_m=2,
         )
 
         self.assertIsNotNone(bm25_scores)
@@ -109,6 +110,25 @@ class HybridRetrievalTest(unittest.TestCase):
 
         self.assertIsNotNone(bm25_scores)
         self.assertLess(fused[0, 2].item(), fused[0, 1].item())
+
+    def test_ambiguous_query_falls_back_to_latent_ranking(self):
+        latent_scores = torch.tensor([[0.9, 0.2, 0.1]], dtype=torch.float32)
+
+        fused, _, _ = fuse_retrieval_scores(
+            latent_scores,
+            questions=["Who is the spouse of the Green performer?"],
+            documents=[[
+                "Green is an album by Steve Hillage.",
+                "Kevin Green is married to Chele.",
+                "Kenric Green is married to Sonequa Martin-Green.",
+            ]],
+            enabled=True,
+            fixed_alpha=0.25,
+            candidate_top_m=3,
+        )
+
+        latent_norm = ((latent_scores + 1.0) * 0.5).clamp(0.0, 1.0)
+        self.assertTrue(torch.allclose(fused, latent_norm, atol=1e-6))
 
 
 if __name__ == "__main__":

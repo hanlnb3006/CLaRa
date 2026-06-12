@@ -82,6 +82,16 @@ def query_anchor_strength(question: str, doc_list: List[str]) -> float:
     top_anchors = sorted(anchored, reverse=True)[:3]
     return sum(top_anchors) / len(top_anchors)
 
+def latent_margin_strength(latent_scores: torch.Tensor) -> torch.Tensor:
+    """Estimate how confident latent retrieval already is from the top-2 score margin."""
+    if latent_scores.size(-1) <= 1:
+        return torch.ones(latent_scores.size(0), device=latent_scores.device, dtype=torch.float32)
+
+    top_vals = torch.topk(latent_scores.float(), k=2, dim=-1).values
+    # Cosine-like scores usually lie in [-1, 1]; a margin around 0.15 is already meaningful.
+    margin = (top_vals[:, 0] - top_vals[:, 1]).clamp(min=0.0)
+    return (margin / 0.15).clamp(0.0, 1.0)
+
 
 def normalize_bm25_scores(scores: torch.Tensor) -> torch.Tensor:
     """Normalize BM25 scores per query while preserving zero rows."""
@@ -229,6 +239,7 @@ def fuse_retrieval_scores(
 
     latent_norm = ((latent_scores.float() + 1.0) * 0.5).clamp(0.0, 1.0).to(latent_scores.dtype)
     bm25_norm = normalize_bm25_scores(bm25_scores).to(latent_scores.dtype)
+    latent_confidence = latent_margin_strength(latent_scores).to(latent_scores.dtype)
     alpha = compute_hybrid_alpha(
         questions,
         bm25_scores,
@@ -239,6 +250,14 @@ def fuse_retrieval_scores(
         alpha_max=alpha_max,
     ).to(latent_scores.dtype)
     fused_scores = alpha * latent_norm + (1.0 - alpha) * bm25_norm
+
+    # Safety gate: keep baseline latent ranking unless lexical evidence is both anchored
+    # and latent retrieval itself is uncertain.
+    if documents is not None:
+        anchor_values = [query_anchor_strength(question, doc_list) for question, doc_list in zip(questions, documents)]
+        anchor_strength = torch.tensor(anchor_values, device=latent_scores.device, dtype=latent_scores.dtype)
+        allow_hybrid = (anchor_strength >= 0.35) & (latent_confidence <= 0.45)
+        fused_scores = torch.where(allow_hybrid.unsqueeze(-1), fused_scores, latent_norm)
 
     if candidate_top_m is not None and 0 < candidate_top_m < latent_scores.size(-1):
         top_m = min(candidate_top_m, latent_scores.size(-1))
