@@ -64,6 +64,7 @@ class HybridRetrievalTest(unittest.TestCase):
         alpha = compute_hybrid_alpha(
             ["When was Timothy McVeigh executed on 2001-06-11?"],
             bm25_scores,
+            documents=[["A weather report.", "Timothy McVeigh was executed on 2001-06-11."]],
             adaptive=True,
             alpha_min=0.75,
             alpha_max=0.95,
@@ -71,6 +72,24 @@ class HybridRetrievalTest(unittest.TestCase):
 
         self.assertGreaterEqual(alpha.item(), 0.75 - 1e-6)
         self.assertLess(alpha.item(), 0.95)
+
+    def test_adaptive_alpha_stays_near_latent_for_ambiguous_queries(self):
+        bm25_scores = torch.tensor([[0.0, 4.0, 3.0]], dtype=torch.float32)
+
+        alpha = compute_hybrid_alpha(
+            ["Who is the spouse of the Green performer?"],
+            bm25_scores,
+            documents=[[
+                "Green is an album by Steve Hillage.",
+                "Kevin Green is married to Chele.",
+                "Kenric Green is married to Sonequa Martin-Green.",
+            ]],
+            adaptive=True,
+            alpha_min=0.75,
+            alpha_max=0.95,
+        )
+
+        self.assertGreater(alpha.item(), 0.90)
 
     def test_candidate_top_m_prevents_bm25_from_promoting_far_candidates(self):
         latent_scores = torch.tensor([[0.9, 0.8, -0.9]], dtype=torch.float32)

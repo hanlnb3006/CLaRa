@@ -45,6 +45,43 @@ def specific_token_ratio(text: str) -> float:
 
     return sum(1 for token in content_tokens if is_specific(token)) / len(content_tokens)
 
+def query_anchor_strength(question: str, doc_list: List[str]) -> float:
+    """Estimate whether lexical matching is anchored by rare, query-specific terms.
+
+    High values mean the query contains a few distinctive tokens that appear in only a
+    small subset of candidate documents, making lexical evidence more trustworthy.
+    """
+    query_terms = lexical_tokens(question)
+    if not query_terms or not doc_list:
+        return 0.0
+
+    tokenized_docs = [lexical_tokens(doc) for doc in doc_list]
+    num_docs = len(tokenized_docs)
+    if num_docs == 0:
+        return 0.0
+
+    doc_freq = Counter()
+    for doc_terms in tokenized_docs:
+        doc_freq.update(set(doc_terms))
+
+    content_terms = [term for term in query_terms if len(term) >= 4]
+    if not content_terms:
+        return 0.0
+
+    anchored = []
+    for term in content_terms:
+        df = doc_freq.get(term, 0)
+        if df == 0:
+            continue
+        rarity = 1.0 - min(1.0, (df - 1) / max(num_docs - 1, 1))
+        anchored.append(rarity)
+
+    if not anchored:
+        return 0.0
+
+    top_anchors = sorted(anchored, reverse=True)[:3]
+    return sum(top_anchors) / len(top_anchors)
+
 
 def normalize_bm25_scores(scores: torch.Tensor) -> torch.Tensor:
     """Normalize BM25 scores per query while preserving zero rows."""
@@ -110,6 +147,7 @@ def compute_bm25_scores(
 def compute_hybrid_alpha(
     questions: List[str],
     bm25_scores: torch.Tensor,
+    documents: Optional[List[List[str]]] = None,
     *,
     fixed_alpha: float = 0.90,
     adaptive: bool = False,
@@ -130,6 +168,7 @@ def compute_hybrid_alpha(
 
     for row_idx, question in enumerate(questions):
         specificity = specific_token_ratio(question)
+        anchor_strength = query_anchor_strength(question, documents[row_idx]) if documents else 0.0
 
         if bm25_norm.size(1) > 1:
             top_vals = torch.topk(bm25_norm[row_idx], k=2).values
@@ -138,7 +177,21 @@ def compute_hybrid_alpha(
             bm25_confidence = 0.0
 
         short_specific_query = 1.0 if len(lexical_tokens(question)) <= 6 and specificity >= 0.4 else 0.0
-        signal = min(1.0, 0.55 * specificity + 0.25 * bm25_confidence * specificity + 0.20 * short_specific_query)
+        lexical_signal = min(
+            1.0,
+            0.45 * specificity
+            + 0.35 * anchor_strength
+            + 0.10 * bm25_confidence * anchor_strength
+            + 0.10 * short_specific_query,
+        )
+
+        # Bridge-style and ambiguous questions should stay close to latent retrieval.
+        if anchor_strength < 0.20:
+            lexical_signal *= 0.20
+        elif anchor_strength < 0.35:
+            lexical_signal *= 0.50
+
+        signal = lexical_signal
         signals.append(signal)
 
     lexical_signal = torch.tensor(signals, device=device, dtype=dtype).unsqueeze(-1)
@@ -179,6 +232,7 @@ def fuse_retrieval_scores(
     alpha = compute_hybrid_alpha(
         questions,
         bm25_scores,
+        documents=documents,
         fixed_alpha=fixed_alpha,
         adaptive=adaptive,
         alpha_min=alpha_min,
