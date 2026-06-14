@@ -176,6 +176,10 @@ class CLaRaConfig(PretrainedConfig):
                  bm25_k1: float = 1.2,
                  bm25_b: float = 0.75,
                  hybrid_candidate_top_m: int = 5,
+                 adaptive_compressor: bool = False,
+                 adaptive_compressor_top_k: int = 0,
+                 adaptive_compressor_strength: float = 0.25,
+                 adaptive_compressor_temperature: float = 0.10,
                  load_pretrained_checkpoint: bool = False,
                  device_map=None,
                  auto_map: dict = {
@@ -229,6 +233,10 @@ class CLaRaConfig(PretrainedConfig):
         self.bm25_k1 = bm25_k1
         self.bm25_b = bm25_b
         self.hybrid_candidate_top_m = hybrid_candidate_top_m
+        self.adaptive_compressor = adaptive_compressor
+        self.adaptive_compressor_top_k = adaptive_compressor_top_k
+        self.adaptive_compressor_strength = adaptive_compressor_strength
+        self.adaptive_compressor_temperature = adaptive_compressor_temperature
         
         if training_form == 'compressor':
             assert compr_model_name is not None and not self.lora
@@ -366,6 +374,10 @@ class CLaRa(PreTrainedModel):
         self.bm25_k1 = float(getattr(cfg, "bm25_k1", 1.2))
         self.bm25_b = float(getattr(cfg, "bm25_b", 0.75))
         self.hybrid_candidate_top_m = int(getattr(cfg, "hybrid_candidate_top_m", 5))
+        self.adaptive_compressor = bool(getattr(cfg, "adaptive_compressor", False))
+        self.adaptive_compressor_top_k = int(getattr(cfg, "adaptive_compressor_top_k", 0))
+        self.adaptive_compressor_strength = float(getattr(cfg, "adaptive_compressor_strength", 0.25))
+        self.adaptive_compressor_temperature = float(getattr(cfg, "adaptive_compressor_temperature", 0.10))
         self.sep = cfg.sep
         self.compr_rate = cfg.compr_rate
         self.local_rank = os.getenv('LOCAL_RANK', '0')
@@ -687,6 +699,7 @@ class CLaRa(PreTrainedModel):
                     selected_doc_embeddings.size(0) * selected_doc_embeddings.size(1), 
                     -1, self.hidden_size
                 )
+                selected_doc_embeddings = self._apply_adaptive_compressor(selected_doc_embeddings, query_reps)
             else:
                 # Use provided documents
                 flat_documents = sum(documents, [])
@@ -724,6 +737,7 @@ class CLaRa(PreTrainedModel):
                     selected_doc_embeddings.size(0) * selected_doc_embeddings.size(1), 
                     -1, self.hidden_size
                 )
+                selected_doc_embeddings = self._apply_adaptive_compressor(selected_doc_embeddings, query_reps)
                 
                 if time_count:
                     start_time4 = time.time()
@@ -887,6 +901,44 @@ class CLaRa(PreTrainedModel):
         enc_input_ids = input_encoder['input_ids'].to(self.decoder.device)
         attention_mask = input_encoder['attention_mask'].to(self.decoder.device)
         return self.compress(enc_input_ids=enc_input_ids, enc_attention_mask=attention_mask)
+
+    def _apply_adaptive_compressor(
+        self,
+        selected_doc_embeddings: torch.Tensor,
+        query_reps: torch.Tensor,
+    ) -> torch.Tensor:
+        """Query-aware memory-token gating for lightweight adaptive compression.
+
+        This v1 path is inference-only and does not require any retraining. It softly
+        reweights per-document memory tokens using similarity to the query latent state.
+        """
+        if not self.adaptive_compressor:
+            return selected_doc_embeddings
+
+        batch_size = query_reps.size(0)
+        top_k = self.generation_top_k
+        if selected_doc_embeddings.size(0) != batch_size * top_k:
+            return selected_doc_embeddings
+
+        docs = selected_doc_embeddings.view(batch_size, top_k, selected_doc_embeddings.size(1), selected_doc_embeddings.size(2))
+        query = F.normalize(query_reps.float(), dim=-1, p=2).unsqueeze(1).unsqueeze(2)
+        doc_tokens = F.normalize(docs.float(), dim=-1, p=2)
+        token_scores = (doc_tokens * query).sum(dim=-1)
+
+        if self.adaptive_compressor_top_k and self.adaptive_compressor_top_k > 0:
+            keep_k = min(self.adaptive_compressor_top_k, token_scores.size(-1))
+            top_idx = token_scores.topk(k=keep_k, dim=-1).indices
+            token_mask = torch.zeros_like(token_scores)
+            token_mask.scatter_(dim=-1, index=top_idx, value=1.0)
+            weights = token_mask
+        else:
+            temperature = max(self.adaptive_compressor_temperature, 1e-4)
+            weights = F.softmax(token_scores / temperature, dim=-1)
+
+        strength = max(0.0, min(self.adaptive_compressor_strength, 1.0))
+        weights = (1.0 - strength) + strength * weights
+        gated_docs = docs * weights.unsqueeze(-1).to(docs.dtype)
+        return gated_docs.view(selected_doc_embeddings.size(0), selected_doc_embeddings.size(1), selected_doc_embeddings.size(2))
 
     # Helper methods
     def _prepare_encoder_inputs(self, texts: List[str], max_length: int, q_texts: List[str] = None) -> Dict[str, torch.Tensor]:

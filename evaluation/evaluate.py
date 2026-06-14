@@ -573,6 +573,10 @@ class AcceleratedCLaRaInference:
                 "bm25_k1",
                 "bm25_b",
                 "hybrid_candidate_top_m",
+                "adaptive_compressor",
+                "adaptive_compressor_top_k",
+                "adaptive_compressor_strength",
+                "adaptive_compressor_temperature",
                 "decoder_model_name",
                 "compr_base_model_name",
                 "compr_model_name",
@@ -837,6 +841,14 @@ def main():
     parser.add_argument('--bm25_b', type=float, default=None, help='BM25 b parameter')
     parser.add_argument('--hybrid_candidate_top_m', type=int, default=None,
                        help='Apply BM25 fusion only inside latent top-M candidates; <=0 disables shortlist gating')
+    parser.add_argument('--adaptive_compressor', action='store_true', default=None,
+                       help='Enable query-aware memory-token gating after document compression')
+    parser.add_argument('--adaptive_compressor_top_k', type=int, default=None,
+                       help='Keep only top-k memory tokens per selected document; <=0 uses soft weighting')
+    parser.add_argument('--adaptive_compressor_strength', type=float, default=None,
+                       help='Strength of adaptive memory-token gating in [0, 1]')
+    parser.add_argument('--adaptive_compressor_temperature', type=float, default=None,
+                       help='Softmax temperature for adaptive memory-token gating')
     parser.add_argument('--decoder_model_name', type=str, default=None,
                        help='Override base decoder model path or Hugging Face id')
     parser.add_argument('--compr_base_model_name', type=str, default=None,
