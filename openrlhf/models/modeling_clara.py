@@ -920,8 +920,24 @@ class CLaRa(PreTrainedModel):
         if selected_doc_embeddings.size(0) != batch_size * top_k:
             return selected_doc_embeddings
 
-        docs = selected_doc_embeddings.view(batch_size, top_k, selected_doc_embeddings.size(1), selected_doc_embeddings.size(2))
-        query = F.normalize(query_reps.float(), dim=-1, p=2).unsqueeze(1).unsqueeze(2)
+        docs = selected_doc_embeddings.reshape(batch_size, top_k, selected_doc_embeddings.size(1), selected_doc_embeddings.size(2))
+        hidden_size = selected_doc_embeddings.size(-1)
+        query = query_reps.float()
+        if query.dim() == 3:
+            if query.size(-1) != hidden_size:
+                return selected_doc_embeddings
+            query = query.mean(dim=1)
+        elif query.dim() == 2:
+            if query.size(-1) == hidden_size:
+                pass
+            elif query.size(-1) % hidden_size == 0:
+                query = query.reshape(batch_size, -1, hidden_size).mean(dim=1)
+            else:
+                return selected_doc_embeddings
+        else:
+            return selected_doc_embeddings
+
+        query = F.normalize(query, dim=-1, p=2).unsqueeze(1).unsqueeze(2)
         doc_tokens = F.normalize(docs.float(), dim=-1, p=2)
         token_scores = (doc_tokens * query).sum(dim=-1)
 
@@ -938,7 +954,7 @@ class CLaRa(PreTrainedModel):
         strength = max(0.0, min(self.adaptive_compressor_strength, 1.0))
         weights = (1.0 - strength) + strength * weights
         gated_docs = docs * weights.unsqueeze(-1).to(docs.dtype)
-        return gated_docs.view(selected_doc_embeddings.size(0), selected_doc_embeddings.size(1), selected_doc_embeddings.size(2))
+        return gated_docs.reshape(selected_doc_embeddings.size(0), selected_doc_embeddings.size(1), selected_doc_embeddings.size(2))
 
     # Helper methods
     def _prepare_encoder_inputs(self, texts: List[str], max_length: int, q_texts: List[str] = None) -> Dict[str, torch.Tensor]:
