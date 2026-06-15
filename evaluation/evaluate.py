@@ -772,9 +772,24 @@ def get_retrieval_run_suffix(args) -> str:
         suffix += f"_m{args.hybrid_candidate_top_m}"
     return suffix
 
+def get_adaptive_compressor_run_suffix(args) -> str:
+    if args.stage != "stage2" or not args.adaptive_compressor:
+        return ""
+
+    top_k = args.adaptive_compressor_top_k
+    if top_k is not None and top_k > 0:
+        mode = "k" + str(top_k)
+    else:
+        mode = "soft"
+
+    strength = _format_float_token(args.adaptive_compressor_strength)
+    temperature = _format_float_token(args.adaptive_compressor_temperature)
+    return "_adaptive_compressor_" + mode + "_s" + strength + "_t" + temperature
+
 def get_eval_run_suffix(args) -> str:
     """Build a suffix for retrieval mode and optional mini-evaluation runs."""
     suffix = get_retrieval_run_suffix(args)
+    suffix += get_adaptive_compressor_run_suffix(args)
     if args.max_eval_samples is not None:
         suffix += f"_n{args.max_eval_samples}"
     return suffix
@@ -804,6 +819,13 @@ def validate_hybrid_args(args):
         raise ValueError("bm25_b must be in [0, 1]")
     if args.max_eval_samples is not None and args.max_eval_samples <= 0:
         raise ValueError("max_eval_samples must be positive")
+
+    strength = args.adaptive_compressor_strength
+    if strength is not None and not 0.0 <= strength <= 1.0:
+        raise ValueError("adaptive_compressor_strength must be in [0, 1]")
+    temperature = args.adaptive_compressor_temperature
+    if temperature is not None and temperature <= 0:
+        raise ValueError("adaptive_compressor_temperature must be positive")
 
 
 def main():

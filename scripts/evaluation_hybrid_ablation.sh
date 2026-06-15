@@ -28,6 +28,12 @@ QUANTIZATION=${QUANTIZATION:-}
 DEVICE_MAP=${DEVICE_MAP:-}
 ATTN_IMPLEMENTATION=${ATTN_IMPLEMENTATION:-}
 HYBRID_CANDIDATE_TOP_M=${HYBRID_CANDIDATE_TOP_M:-5}
+ADAPTIVE_COMPRESSOR=${ADAPTIVE_COMPRESSOR:-}
+ADAPTIVE_COMPRESSOR_TOP_K=${ADAPTIVE_COMPRESSOR_TOP_K:-}
+ADAPTIVE_COMPRESSOR_STRENGTH=${ADAPTIVE_COMPRESSOR_STRENGTH:-}
+ADAPTIVE_COMPRESSOR_TEMPERATURE=${ADAPTIVE_COMPRESSOR_TEMPERATURE:-}
+MIXED_PRECISION=${MIXED_PRECISION:-bf16}
+AC_ARG=--adaptive_compressor
 
 OPTIONAL_ARGS=""
 if [ -n "$MAX_EVAL_SAMPLES" ]; then
@@ -55,6 +61,19 @@ if [ -n "$HYBRID_CANDIDATE_TOP_M" ]; then
     OPTIONAL_ARGS="$OPTIONAL_ARGS --hybrid_candidate_top_m $HYBRID_CANDIDATE_TOP_M"
 fi
 
+if [ -n "$ADAPTIVE_COMPRESSOR" ] && [ "$ADAPTIVE_COMPRESSOR" != "0" ]; then
+    OPTIONAL_ARGS="$OPTIONAL_ARGS $AC_ARG"
+fi
+if [ -n "$ADAPTIVE_COMPRESSOR_TOP_K" ]; then
+    OPTIONAL_ARGS="$OPTIONAL_ARGS ${AC_ARG}_top_k $ADAPTIVE_COMPRESSOR_TOP_K"
+fi
+if [ -n "$ADAPTIVE_COMPRESSOR_STRENGTH" ]; then
+    OPTIONAL_ARGS="$OPTIONAL_ARGS ${AC_ARG}_strength $ADAPTIVE_COMPRESSOR_STRENGTH"
+fi
+if [ -n "$ADAPTIVE_COMPRESSOR_TEMPERATURE" ]; then
+    OPTIONAL_ARGS="$OPTIONAL_ARGS ${AC_ARG}_temperature $ADAPTIVE_COMPRESSOR_TEMPERATURE"
+fi
+
 export PYTHONPATH="$PROJECT_ROOT:$SAVE_PATH:$PYTHONPATH"
 
 COMMON_ARGS="evaluation/evaluate.py \
@@ -72,14 +91,14 @@ echo "Running baseline CLaRa latent retrieval..."
 accelerate launch \
     --num_processes=$NUM_PROCESSES \
     --num_machines=1 \
-    --mixed_precision=bf16 \
+    --mixed_precision=$MIXED_PRECISION \
     $COMMON_ARGS
 
 echo "Running fixed hybrid retrieval..."
 accelerate launch \
     --num_processes=$NUM_PROCESSES \
     --num_machines=1 \
-    --mixed_precision=bf16 \
+    --mixed_precision=$MIXED_PRECISION \
     $COMMON_ARGS \
     --hybrid_retrieval \
     --hybrid_alpha 0.90
@@ -88,7 +107,7 @@ echo "Running adaptive hybrid retrieval..."
 accelerate launch \
     --num_processes=$NUM_PROCESSES \
     --num_machines=1 \
-    --mixed_precision=bf16 \
+    --mixed_precision=$MIXED_PRECISION \
     $COMMON_ARGS \
     --hybrid_retrieval \
     --hybrid_adaptive_fusion \
