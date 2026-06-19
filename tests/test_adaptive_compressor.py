@@ -48,3 +48,32 @@ class AdaptiveCompressorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    def test_gate_builds_and_is_trainable(self):
+        model = self._model()
+        model.adaptive_compressor_trainable = True
+        model.adaptive_compressor_lora_r = 8
+        model.adaptive_compressor_hidden = 0
+        model._setup_adaptive_compressor_gate()
+        self.assertIsNotNone(model.adaptive_gate_lora)
+        params = [p for p in model.adaptive_gate_lora.parameters() if p.requires_grad]
+        self.assertGreater(len(params), 0)
+        self.assertLess(sum(p.numel() for p in params), 200_000)
+
+    def test_gate_backward_changes_weights(self):
+        model = self._model()
+        model.adaptive_compressor_trainable = True
+        model.adaptive_compressor_lora_r = 8
+        model._setup_adaptive_compressor_gate()
+
+        before = [p.detach().clone() for p in model.adaptive_gate_lora.parameters()]
+        selected_docs = torch.randn(4, 16, 32)
+        query_reps = torch.randn(2, 16 * 32)
+        out = model._apply_adaptive_compressor(selected_docs, query_reps)
+        loss = out.float().pow(2).mean()
+        loss.backward()
+
+        changed = 0
+        for p_prev, p_now in zip(before, model.adaptive_gate_lora.parameters()):
+            if not torch.allclose(p_prev, p_now.detach()):
+                changed += 1
+        self.assertEqual(changed, len(before))

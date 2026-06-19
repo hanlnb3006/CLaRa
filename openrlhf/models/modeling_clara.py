@@ -180,6 +180,9 @@ class CLaRaConfig(PretrainedConfig):
                  adaptive_compressor_top_k: int = 0,
                  adaptive_compressor_strength: float = 0.25,
                  adaptive_compressor_temperature: float = 0.10,
+                 adaptive_compressor_trainable: bool = False,
+                 adaptive_compressor_lora_r: int = 8,
+                 adaptive_compressor_hidden: int = 0,
                  load_pretrained_checkpoint: bool = False,
                  device_map=None,
                  auto_map: dict = {
@@ -237,6 +240,9 @@ class CLaRaConfig(PretrainedConfig):
         self.adaptive_compressor_top_k = adaptive_compressor_top_k
         self.adaptive_compressor_strength = adaptive_compressor_strength
         self.adaptive_compressor_temperature = adaptive_compressor_temperature
+        self.adaptive_compressor_trainable = bool(adaptive_compressor_trainable)
+        self.adaptive_compressor_lora_r = int(adaptive_compressor_lora_r)
+        self.adaptive_compressor_hidden = int(adaptive_compressor_hidden)
         
         if training_form == 'compressor':
             assert compr_model_name is not None and not self.lora
@@ -378,6 +384,9 @@ class CLaRa(PreTrainedModel):
         self.adaptive_compressor_top_k = int(getattr(cfg, "adaptive_compressor_top_k", 0))
         self.adaptive_compressor_strength = float(getattr(cfg, "adaptive_compressor_strength", 0.25))
         self.adaptive_compressor_temperature = float(getattr(cfg, "adaptive_compressor_temperature", 0.10))
+        self.adaptive_compressor_trainable = bool(getattr(cfg, "adaptive_compressor_trainable", False))
+        self.adaptive_compressor_lora_r = int(getattr(cfg, "adaptive_compressor_lora_r", 8))
+        self.adaptive_compressor_hidden = int(getattr(cfg, "adaptive_compressor_hidden", 0))
         self.sep = cfg.sep
         self.compr_rate = cfg.compr_rate
         self.local_rank = os.getenv('LOCAL_RANK', '0')
@@ -390,8 +399,9 @@ class CLaRa(PreTrainedModel):
             self._setup_adapter_training()
         else:
             print(f'Total trainable parameters: {self.num_parameters(only_trainable=True)}')
-        
+
         self._prepare_mem_tokens_optimization()
+        self._setup_adaptive_compressor_gate()
         
         # Retrieval configuration
         self.url_retrieval = "http://127.0.0.1:5004/queries"
@@ -901,6 +911,35 @@ class CLaRa(PreTrainedModel):
         enc_input_ids = input_encoder['input_ids'].to(self.decoder.device)
         attention_mask = input_encoder['attention_mask'].to(self.decoder.device)
         return self.compress(enc_input_ids=enc_input_ids, enc_attention_mask=attention_mask)
+    def _setup_adaptive_compressor_gate(self) -> None:
+        """Build a small LoRA-gated scoring head on top of memory tokens.
+
+        The head stays tiny on purpose so we can train it cheaply on Colab T4.
+        It produces per-memory-token scores that are added to the cosine
+        similarity score before the temperature/strength mask is applied.
+        """
+        self.adaptive_gate = None
+        self.adaptive_gate_lora = None
+        if not (self.adaptive_compressor and self.adaptive_compressor_trainable):
+            return
+
+        hidden_size = self.hidden_size
+        r = max(1, self.adaptive_compressor_lora_r)
+        inner_dim = self.adaptive_compressor_hidden or (hidden_size // 8)
+        inner_dim = max(1, inner_dim)
+
+        self.adaptive_gate_lora = nn.ModuleDict({
+            "down": nn.Linear(hidden_size, r, bias=False),
+            "up": nn.Linear(r, inner_dim, bias=False),
+            "head": nn.Linear(inner_dim, 1, bias=False),
+        })
+        for module in self.adaptive_gate_lora.values():
+            nn.init.normal_(module.weight, std=0.02)
+        self.adaptive_gate_lora = self.adaptive_gate_lora.to(self.decoder.device)
+        print(
+            f"Adaptive Compressor trainable gate: r={r}, inner_dim={inner_dim}, "
+            f"params={sum(p.numel() for p in self.adaptive_gate_lora.parameters())}"
+        )
 
     def _apply_adaptive_compressor(
         self,
@@ -940,6 +979,14 @@ class CLaRa(PreTrainedModel):
         query = F.normalize(query, dim=-1, p=2).unsqueeze(1).unsqueeze(2)
         doc_tokens = F.normalize(docs.float(), dim=-1, p=2)
         token_scores = (doc_tokens * query).sum(dim=-1)
+        gate = getattr(self, "adaptive_gate_lora", None)
+        if gate is not None:
+            gate = self.adaptive_gate_lora
+            flat = docs.float()
+            B, K, T, H = flat.shape
+            gate_in = flat.reshape(B * K * T, H)
+            gate_scores = gate.head(gate.up(gate.down(gate_in))).reshape(B, K, T)
+            token_scores = token_scores + gate_scores
 
         if self.adaptive_compressor_top_k and self.adaptive_compressor_top_k > 0:
             keep_k = min(self.adaptive_compressor_top_k, token_scores.size(-1))
@@ -1360,6 +1407,11 @@ class CLaRa(PreTrainedModel):
             
             # Save configuration
             self.config.save_pretrained(save_directory)
+            if getattr(self, "adaptive_gate_lora", None) is not None:
+                torch.save(
+                    {k: v.detach().cpu() for k, v in self.adaptive_gate_lora.state_dict().items()},
+                    os.path.join(save_directory, "adaptive_gate.pth"),
+                )
         else:
             super().save_pretrained(save_directory, **kwargs)
 
@@ -1440,6 +1492,11 @@ class CLaRa(PreTrainedModel):
                 warnings.warn(f'Adapters not found at {adapters_path}')
 
             model._set_all_adapters()
+            adaptive_gate_path = os.path.join(pretrained_model_name_or_path, "adaptive_gate.pth")
+            if os.path.exists(adaptive_gate_path) and getattr(model, "adaptive_gate_lora", None) is not None:
+                state = torch.load(adaptive_gate_path, map_location=map_location, weights_only=True)
+                model.adaptive_gate_lora.load_state_dict(state)
+                print("Loaded Adaptive Compressor trainable gate from checkpoint")
             config.load_adapters = True
             return model
         else:

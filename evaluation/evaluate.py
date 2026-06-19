@@ -577,6 +577,9 @@ class AcceleratedCLaRaInference:
                 "adaptive_compressor_top_k",
                 "adaptive_compressor_strength",
                 "adaptive_compressor_temperature",
+                "adaptive_compressor_trainable",
+                "adaptive_compressor_lora_r",
+                "adaptive_compressor_hidden",
                 "decoder_model_name",
                 "compr_base_model_name",
                 "compr_model_name",
@@ -871,6 +874,12 @@ def main():
                        help='Strength of adaptive memory-token gating in [0, 1]')
     parser.add_argument('--adaptive_compressor_temperature', type=float, default=None,
                        help='Softmax temperature for adaptive memory-token gating')
+    parser.add_argument('--adaptive_compressor_trainable', action='store_true', default=None,
+                       help='Use trainable LoRA gate for adaptive memory-token scoring')
+    parser.add_argument('--adaptive_compressor_lora_r', type=int, default=None,
+                       help='LoRA rank for the trainable adaptive compressor gate')
+    parser.add_argument('--adaptive_compressor_hidden', type=int, default=None,
+                       help='Inner hidden dimension of the trainable adaptive compressor gate')
     parser.add_argument('--decoder_model_name', type=str, default=None,
                        help='Override base decoder model path or Hugging Face id')
     parser.add_argument('--compr_base_model_name', type=str, default=None,
