@@ -504,6 +504,7 @@ class CLaRa(PreTrainedModel):
         self.decoder_model_name = cfg.decoder_model_name
         self.decoder = self._create_decoder(cfg)
         self.doc_max_length = cfg.doc_max_length
+        self.topk_method = getattr(cfg, "topk_method", "iterative_st")
         
         print(f'Base decoder parameters: {self.decoder.num_parameters()}')
         
@@ -1592,7 +1593,9 @@ class CLaRa(PreTrainedModel):
         """Load model from pretrained checkpoint."""
         # Load configuration
         config = CLaRaConfig.from_pretrained(pretrained_model_name_or_path)
-        
+        if not hasattr(config, "topk_method"):
+            config.topk_method = "iterative_st"
+
         # Update config with kwargs
         for key, value in kwargs.items():
             if hasattr(config, key):
