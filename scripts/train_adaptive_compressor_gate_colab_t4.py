@@ -103,7 +103,23 @@ def train(args: argparse.Namespace) -> None:
     )
 
     print("Loading CLaRa checkpoint (this may take a few minutes)...")
-    model = CLaRa.from_pretrained(args.ckpt_path)
+    overrides = {
+        "training_stage": "stage2",
+        "generation_top_k": 2,
+        "pure_inference": True,
+        "load_adapters": True,
+        "decoder_model_name": args.decoder_model_name,
+        "compr_base_model_name": args.compr_base_model_name,
+        "quantization": args.quantization,
+        "adaptive_compressor": True,
+        "adaptive_compressor_trainable": True,
+        "adaptive_compressor_lora_r": args.lora_r,
+        "adaptive_compressor_hidden": args.hidden_dim,
+        "adaptive_compressor_top_k": args.top_k,
+        "adaptive_compressor_strength": args.strength,
+        "adaptive_compressor_temperature": args.temperature,
+    }
+    model = CLaRa.from_pretrained(args.ckpt_path, **overrides)
     model._setup_adaptive_compressor_gate()
     freeze_decoder(model)
     model.eval()
