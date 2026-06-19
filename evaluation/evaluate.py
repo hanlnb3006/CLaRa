@@ -580,6 +580,7 @@ class AcceleratedCLaRaInference:
                 "adaptive_compressor_trainable",
                 "adaptive_compressor_lora_r",
                 "adaptive_compressor_hidden",
+                "topk_method",
                 "decoder_model_name",
                 "compr_base_model_name",
                 "compr_model_name",
@@ -880,6 +881,9 @@ def main():
                        help='LoRA rank for the trainable adaptive compressor gate')
     parser.add_argument('--adaptive_compressor_hidden', type=int, default=None,
                        help='Inner hidden dimension of the trainable adaptive compressor gate')
+    parser.add_argument('--topk_method', type=str, default=None,
+                       choices=['iterative_st', 'sparsemax', 'entmax15', 'gumbel_st'],
+                       help='Differentiable top-k relaxation used for latent document selection')
     parser.add_argument('--decoder_model_name', type=str, default=None,
                        help='Override base decoder model path or Hugging Face id')
     parser.add_argument('--compr_base_model_name', type=str, default=None,

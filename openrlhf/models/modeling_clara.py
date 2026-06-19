@@ -183,6 +183,7 @@ class CLaRaConfig(PretrainedConfig):
                  adaptive_compressor_trainable: bool = False,
                  adaptive_compressor_lora_r: int = 8,
                  adaptive_compressor_hidden: int = 0,
+                 topk_method: str = "iterative_st",
                  load_pretrained_checkpoint: bool = False,
                  device_map=None,
                  auto_map: dict = {
@@ -243,7 +244,8 @@ class CLaRaConfig(PretrainedConfig):
         self.adaptive_compressor_trainable = bool(adaptive_compressor_trainable)
         self.adaptive_compressor_lora_r = int(adaptive_compressor_lora_r)
         self.adaptive_compressor_hidden = int(adaptive_compressor_hidden)
-        
+        self.topk_method = topk_method
+
         if training_form == 'compressor':
             assert compr_model_name is not None and not self.lora
 
@@ -335,6 +337,161 @@ def differentiable_topk(logits: torch.Tensor, k: int, temperature: float = 1.0) 
     # Straight-through estimator
     W = K_hard + (K_soft - K_soft.detach())
     return W, topk_idx
+
+
+def sparsemax(logits, dim=-1):
+    """Sparsemax: project logits onto the probability simplex.
+
+    Reference: Martins and Astudillo (2016), From Softmax to Sparsemax.
+    Returns a sparse distribution that exactly sums to 1.
+    """
+    orig_shape = logits.shape
+    moved = logits.transpose(dim, -1)
+    flat = moved.reshape(-1, orig_shape[-1])
+    N = flat.size(-1)
+    sorted_vals, _ = torch.sort(flat, dim=-1, descending=True)
+    cumsum = sorted_vals.cumsum(dim=-1)
+    arange = torch.arange(1, N + 1, device=flat.device, dtype=flat.dtype).expand_as(sorted_vals)
+    support = (sorted_vals * arange) > (cumsum - 1.0)
+    kz = support.sum(dim=-1, keepdim=True).clamp(min=1)
+    cumsum_at_kz = cumsum.gather(-1, kz - 1)
+    tau = (cumsum_at_kz - 1.0) / kz
+    out = torch.clamp(flat - tau, min=0.0)
+    out = out.reshape(orig_shape).transpose(dim, -1)
+    return out
+
+
+def entmax15(logits, dim=-1, n_iter=60, tol=1e-6):
+    """Entmax 1.5: between sparsemax and softmax.
+
+    Reference: Peters et al. (2019), Sparse Sequence-to-Sequence Models.
+    Uses bisection to find threshold tau such that
+        sum_i max(0, 0.5 * x_i - tau)^2 = 1
+    and returns p_i = max(0, 0.5 * x_i - tau)^2 (sparse, sums to 1).
+    """
+    orig_shape = logits.shape
+    moved = logits.transpose(dim, -1)
+    flat = moved.reshape(-1, orig_shape[-1])
+
+    def f(tau):
+        return (torch.clamp(0.5 * flat - tau.unsqueeze(-1), min=0.0) ** 2).sum(dim=-1) - 1.0
+
+    lo = 0.5 * flat.min(dim=-1).values - 1.0
+    hi = 0.5 * flat.max(dim=-1).values + 1.0
+    for _ in range(n_iter):
+        mid = (lo + hi) * 0.5
+        val = f(mid)
+        lo = torch.where(val > 0, mid, lo)
+        hi = torch.where(val <= 0, mid, hi)
+        if (hi - lo).abs().max().item() < tol:
+            break
+    tau = (lo + hi) * 0.5
+    p = torch.clamp(0.5 * flat - tau.unsqueeze(-1), min=0.0) ** 2
+    return p.reshape(orig_shape).transpose(dim, -1)
+
+
+def _topk_hard_mask(topk_idx, B, k, N, dtype, device):
+    """Build [B, k, N] hard mask from [B, k] top-k indices."""
+    W = torch.zeros(B, k, N, device=device, dtype=dtype)
+    W.scatter_(2, topk_idx.unsqueeze(-1), 1.0)
+    return W
+
+
+def sparsemax_topk(logits, k, temperature=1.0):
+    """Sparsemax + top-k selection.
+
+    Sparsemax produces a sparse distribution; we take the top-k entries of that
+    distribution and build a [B, k, N] hard mask. Straight-through gradient
+    flows back through the sparsemax distribution.
+    """
+    B, N = logits.shape
+    scaled = logits / max(temperature, 1e-6)
+    p = sparsemax(scaled, dim=-1)
+    _, topk_idx = p.topk(min(k, N), dim=-1)
+    if k != topk_idx.size(-1):
+        pad = topk_idx[:, -1:].expand(-1, k - topk_idx.size(-1))
+        topk_idx = torch.cat([topk_idx, pad], dim=-1)
+    W_hard = _topk_hard_mask(topk_idx, B, k, N, logits.dtype, logits.device)
+    W_soft = p.unsqueeze(1).expand(-1, k, -1)
+    W = W_hard + (W_soft - W_soft.detach())
+    return W, topk_idx
+
+
+def entmax15_topk(logits, k, temperature=1.0):
+    """Entmax-1.5 + top-k selection. Same interface as sparsemax_topk."""
+    B, N = logits.shape
+    scaled = logits / max(temperature, 1e-6)
+    p = entmax15(scaled, dim=-1)
+    _, topk_idx = p.topk(min(k, N), dim=-1)
+    if k != topk_idx.size(-1):
+        pad = topk_idx[:, -1:].expand(-1, k - topk_idx.size(-1))
+        topk_idx = torch.cat([topk_idx, pad], dim=-1)
+    W_hard = _topk_hard_mask(topk_idx, B, k, N, logits.dtype, logits.device)
+    W_soft = p.unsqueeze(1).expand(-1, k, -1)
+    W = W_hard + (W_soft - W_soft.detach())
+    return W, topk_idx
+
+
+def gumbel_topk_st(logits, k, temperature=1.0):
+    """Gumbel-Top-k with straight-through estimator.
+
+    Adds Gumbel noise to logits, takes hard top-k, but uses softmax of perturbed
+    logits as the soft path for gradient flow. This is a simpler, single-pass
+    alternative to the iterative k-slot differentiable_topk in CLaRa.
+    """
+    B, N = logits.shape
+    gumbel = -torch.log(-torch.log(torch.rand_like(logits) + 1e-9) + 1e-9)
+    perturbed = (logits + gumbel) / max(temperature, 1e-6)
+    _, topk_idx = perturbed.topk(min(k, N), dim=-1)
+    if k != topk_idx.size(-1):
+        pad = topk_idx[:, -1:].expand(-1, k - topk_idx.size(-1))
+        topk_idx = torch.cat([topk_idx, pad], dim=-1)
+    W_hard = _topk_hard_mask(topk_idx, B, k, N, logits.dtype, logits.device)
+    W_soft = F.softmax(perturbed, dim=-1).unsqueeze(1).expand(-1, k, -1)
+    W = W_hard + (W_soft - W_soft.detach())
+    return W, topk_idx
+
+
+def differentiable_topk_iterative_st(logits, k, temperature=1.0):
+    """Original CLaRa iterative Gumbel-style differentiable top-k (k slots)."""
+    B, N = logits.shape
+    perturbed = logits / max(temperature, 1e-6)
+    _, topk_idx = perturbed.topk(min(k, N), dim=-1)
+    if k != topk_idx.size(-1):
+        pad = topk_idx[:, -1:].expand(-1, k - topk_idx.size(-1))
+        topk_idx = torch.cat([topk_idx, pad], dim=-1)
+    K_hard = _topk_hard_mask(topk_idx, B, k, N, logits.dtype, logits.device)
+    K_soft = torch.zeros_like(K_hard)
+    taken = torch.zeros(B, N, device=logits.device, dtype=logits.dtype)
+    for j in range(k):
+        mask = (1.0 - taken.detach())
+        masked = perturbed + (mask + 1e-8).log()
+        pj = F.softmax(masked, dim=-1).float()
+        K_soft[:, j, :] = pj
+        taken = torch.clamp(taken + K_hard[:, j, :], max=1.0)
+    W = K_hard + (K_soft - K_soft.detach())
+    return W, topk_idx
+
+
+def differentiable_topk(logits, k, temperature=1.0, method="iterative_st"):
+    """Dispatcher for top-k selection relaxations used in CLaRa stage 2.
+
+    Methods:
+      - iterative_st: original k-slot Gumbel + straight-through (default).
+      - sparsemax:    Sparsemax + top-k extraction.
+      - entmax15:     Entmax-1.5 + top-k extraction.
+      - gumbel_st:    Single-pass Gumbel-Top-k + straight-through.
+    All return (W, topk_idx) where W has shape [B, k, N].
+    """
+    if method == "sparsemax":
+        return sparsemax_topk(logits, k, temperature)
+    if method == "entmax15":
+        return entmax15_topk(logits, k, temperature)
+    if method == "gumbel_st":
+        return gumbel_topk_st(logits, k, temperature)
+    if method == "iterative_st":
+        return differentiable_topk_iterative_st(logits, k, temperature)
+    raise ValueError(f"Unknown differentiable_topk method: {method}")
 
 
 class CLaRa(PreTrainedModel):
@@ -703,7 +860,7 @@ class CLaRa(PreTrainedModel):
                     query_reps.unsqueeze(1), 
                     retrieved_doc_embeddings.transpose(1, 2)
                 ).squeeze(1)
-                z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=0.5)
+                z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=0.5, method=self.topk_method)
                 selected_doc_embeddings = torch.einsum('bkn,bnd->bkd', z, retrieved_doc_embeddings)
                 selected_doc_embeddings = selected_doc_embeddings.view(
                     selected_doc_embeddings.size(0) * selected_doc_embeddings.size(1), 
@@ -741,7 +898,7 @@ class CLaRa(PreTrainedModel):
                 ).squeeze(1)
                 scores, _, _ = self._fuse_retrieval_scores(scores, questions, documents)
                 
-                z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=0.02)
+                z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=0.02, method=self.topk_method)
                 selected_doc_embeddings = torch.einsum('bkn,bnd->bkd', z.to(retrieved_doc_embeddings.dtype), retrieved_doc_embeddings)
                 selected_doc_embeddings = selected_doc_embeddings.view(
                     selected_doc_embeddings.size(0) * selected_doc_embeddings.size(1), 
@@ -1652,7 +1809,7 @@ class CLaRa(PreTrainedModel):
                 query_reps.unsqueeze(1), 
                 retrieved_doc_embeddings.transpose(1, 2)
             ).squeeze(1)
-            z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=1)
+            z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=1, method=self.topk_method)
             selected = torch.einsum('bkn,bnd->bkd', z, retrieved_doc_embeddings)
             selected = selected.view(selected.size(0) * selected.size(1), -1, self.hidden_size)
         else:
@@ -1671,7 +1828,7 @@ class CLaRa(PreTrainedModel):
                 scores, batch.get("questions"), batch.get("docs")
             )
             
-            z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=0.02)
+            z, topk_idx = differentiable_topk(scores, self.generation_top_k, temperature=0.02, method=self.topk_method)
             selected = torch.einsum('bkn,bnd->bkd', z.to(retrieved_doc_embeddings.dtype), retrieved_doc_embeddings)
             selected = selected.view(selected.size(0) * selected.size(1), -1, self.hidden_size)
 
