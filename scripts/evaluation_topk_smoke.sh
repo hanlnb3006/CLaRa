@@ -52,4 +52,4 @@ accelerate launch
     --num_processes=$NUM_PROCESSES
     --num_machines=1
     --mixed_precision=$MIXED_PRECISION
-    $COMMON_ARGS
+    "$COMMON_ARGS"
