@@ -54,10 +54,10 @@ run_method() {
         args+=(--topk_method "$method")
     fi
     echo "==> Running topk_method=${method:-iterative_st}"
-    accelerate launch
-        --num_processes=$NUM_PROCESSES
-        --num_machines=1
-        --mixed_precision=$MIXED_PRECISION
+    accelerate launch \
+        --num_processes=$NUM_PROCESSES \
+        --num_machines=1 \
+        --mixed_precision=$MIXED_PRECISION \
         "${args[@]}"
 }
 

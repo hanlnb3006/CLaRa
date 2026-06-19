@@ -49,8 +49,8 @@ COMMON_ARGS=(
 )
 
 echo "Running topk smoke: method=$TOPK_METHOD max_eval=$MAX_EVAL_SAMPLES dataset=$DATASETS"
-accelerate launch
-    --num_processes=$NUM_PROCESSES
-    --num_machines=1
-    --mixed_precision=$MIXED_PRECISION
+accelerate launch \
+    --num_processes=$NUM_PROCESSES \
+    --num_machines=1 \
+    --mixed_precision=$MIXED_PRECISION \
     "${COMMON_ARGS[@]}"
