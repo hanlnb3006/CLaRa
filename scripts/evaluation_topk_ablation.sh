@@ -1,5 +1,7 @@
 #!/bin/bash
 # Ablation across 4 top-k relaxations: iterative_st / sparsemax / entmax15 / gumbel_st.
+# Set TOPK_METHODS to skip methods that already have results, e.g.:
+#   TOPK_METHODS="sparsemax,entmax15,gumbel_st" bash scripts/evaluation_topk_ablation.sh
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,6 +25,9 @@ QUANTIZATION=${QUANTIZATION:-int4}
 DEVICE_MAP=${DEVICE_MAP:-auto}
 ATTN_IMPLEMENTATION=${ATTN_IMPLEMENTATION:-}
 MIXED_PRECISION=${MIXED_PRECISION:-bf16}
+
+# Comma-separated list of methods to run. Default: all 4.
+TOPK_METHODS=${TOPK_METHODS:-iterative_st,sparsemax,entmax15,gumbel_st}
 
 OPTIONAL_ARGS=()
 [ -n "$MAX_EVAL_SAMPLES" ]      && OPTIONAL_ARGS+=(--max_eval_samples "$MAX_EVAL_SAMPLES")
@@ -61,9 +66,9 @@ run_method() {
         "${args[@]}"
 }
 
-run_method "iterative_st"
-run_method "sparsemax"
-run_method "entmax15"
-run_method "gumbel_st"
+IFS=',' read -ra METHODS <<< "$TOPK_METHODS"
+for method in "${METHODS[@]}"; do
+    run_method "$method"
+done
 
 echo "Topk relaxation ablation completed."

@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 
 import torch
 
@@ -45,9 +45,6 @@ class AdaptiveCompressorTest(unittest.TestCase):
 
         self.assertTrue(torch.equal(out, selected_docs))
 
-
-if __name__ == "__main__":
-    unittest.main()
     def test_gate_builds_and_is_trainable(self):
         model = self._model()
         model.adaptive_compressor_trainable = True
@@ -77,3 +74,7 @@ if __name__ == "__main__":
             if not torch.allclose(p_prev, p_now.detach()):
                 changed += 1
         self.assertEqual(changed, len(before))
+
+
+if __name__ == "__main__":
+    unittest.main()
