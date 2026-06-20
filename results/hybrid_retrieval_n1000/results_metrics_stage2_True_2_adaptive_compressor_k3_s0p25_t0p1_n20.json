@@ -1,0 +1,14 @@
+{
+  "musique": {
+    "f1": 0.23166666666666663,
+    "acc": 0.1,
+    "em": 0.05,
+    "avg_output_length": 2.25,
+    "recall@1": 0.225,
+    "recall@3": 0.325,
+    "recall@5": 0.325,
+    "precision@1": 0.45,
+    "precision@3": 0.21666666666666665,
+    "precision@5": 0.13
+  }
+}
